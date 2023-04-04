@@ -18,16 +18,26 @@ class ExternalTaskWorker:
         self.executor = ExternalTaskExecutor(self.worker_id, self.client)
         self.config = config
         self._log_with_context(f"Created new External Task Worker with config: {obfuscate_password(self.config)}")
+        self._running = False
 
     def subscribe(self, topic_names, action, process_variables=None):
-        while True:
-            self._fetch_and_execute_safe(topic_names, action, process_variables)
+        self._running = True
+        while self._running:
+            try:
+                self._fetch_and_execute_safe(topic_names, action, process_variables)
+            except BaseException as e:
+                self._running = False
 
-        self._log_with_context("Stopping worker")  # Fixme: This code seems to be unreachable?
+        self._log_with_context("Stopping worker")
+
+    def unsubscribe(self):
+        self._running = False
 
     def _fetch_and_execute_safe(self, topic_names, action, process_variables=None):
         try:
             self.fetch_and_execute(topic_names, action, process_variables)
+        except (KeyboardInterrupt, SystemExit) as e:
+            raise e
         except NoExternalTaskFound:
             self._log_with_context(f"no External Task found for Topics: {topic_names}, "
                                    f"Process variables: {process_variables}", topic=topic_names)
